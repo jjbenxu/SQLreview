@@ -1,0 +1,41 @@
+{
+ "tables": [
+  {
+   "name": "stores",
+   "file": "stores.csv.gz",
+   "rows": 74
+  },
+  {
+   "name": "products",
+   "file": "products.csv.gz",
+   "rows": 2517
+  },
+  {
+   "name": "calendar",
+   "file": "calendar.csv.gz",
+   "rows": 3652
+  },
+  {
+   "name": "exchange_rates",
+   "file": "exchange_rates.csv.gz",
+   "rows": 18250
+  },
+  {
+   "name": "orders",
+   "file": "orders.csv.gz",
+   "rows": 89133
+  },
+  {
+   "name": "order_lines",
+   "file": "order_lines.csv.gz",
+   "rows": 213185
+  },
+  {
+   "name": "customers",
+   "file": "customers.csv.gz",
+   "rows": 51611
+  }
+ ],
+ "schema": "CREATE TABLE stores (\n  store_id integer,\n  store_code text,\n  geo_area_id integer,\n  country_code text,\n  country_name text,\n  state text,\n  opened_on date,\n  closed_on date,\n  description text,\n  floor_area_m2 numeric,\n  status text\n);\nCREATE TABLE products (\n  product_id integer,\n  product_code text,\n  product_name text,\n  manufacturer text,\n  brand text,\n  color text,\n  weight_unit text,\n  weight numeric,\n  unit_cost numeric,\n  unit_price numeric,\n  category_id integer,\n  category_name text,\n  subcategory_id integer,\n  subcategory_name text\n);\nCREATE TABLE calendar (\n  calendar_date date,\n  date_key integer,\n  year integer,\n  year_quarter text,\n  year_quarter_number integer,\n  quarter text,\n  year_month text,\n  year_month_short text,\n  year_month_number integer,\n  month_name text,\n  month_short text,\n  month_number integer,\n  day_of_week text,\n  day_of_week_short text,\n  day_of_week_number integer,\n  working_day boolean,\n  working_day_number integer\n);\nCREATE TABLE exchange_rates (\n  rate_date date,\n  from_currency text,\n  to_currency text,\n  rate numeric\n);\nCREATE TABLE orders (\n  order_id integer,\n  customer_id integer,\n  store_id integer,\n  order_date date,\n  delivery_date date,\n  currency_code text\n);\nCREATE TABLE order_lines (\n  order_id integer,\n  line_number integer,\n  product_id integer,\n  quantity integer,\n  unit_price numeric,\n  net_price numeric,\n  unit_cost numeric\n);\nCREATE TABLE customers (\n  customer_id integer,\n  gender text,\n  title text,\n  first_name text,\n  middle_initial text,\n  last_name text,\n  city text,\n  state_code text,\n  state_name text,\n  postal_code text,\n  country_code text,\n  country_name text,\n  birth_date date,\n  valid_from date,\n  valid_to date\n);",
+ "note": "orders and order_lines are a 1-in-10 sample (order_id divisible by 10); customers are those on sampled orders; exchange_rates are USD-from only."
+}
