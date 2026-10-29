@@ -7,7 +7,7 @@ const store = {
 const done = () => store.get('q', {});
 const mark = (key, ok) => { const q = done(); q[key] = ok ? 1 : 0; store.set('q', q); nav(); };
 const unitScore = u => { const q = done(); return u.quiz.filter((_, i) => q[`${u.id}-${i}`] === 1).length; };
-const EXTRA = [['walk', 'Query walkthroughs', 'W'], ['reason', 'Join reasoning', 'J'], ['bugs', 'Bug hunt', 'B'], ['interview', 'Interview corner', 'I'], ['order', 'Order of execution', 'O'], ['cheat', 'Function sheet', 'ƒ'], ['glossary', 'Glossary', 'A'], ['mock', 'Mock exam', 'M'], ['play', 'Playground', '▶']];
+const EXTRA = [['walk', 'Query walkthroughs', 'W'], ['reason', 'Join reasoning', 'J'], ['bugs', 'Bug hunt', 'B'], ['interview', 'Interview corner', 'I'], ['drill', 'Blank-editor drill', 'D'], ['order', 'Order of execution', 'O'], ['cheat', 'Function sheet', 'ƒ'], ['glossary', 'Glossary', 'A'], ['mock', 'Mock exam', 'M'], ['play', 'Playground', '▶']];
 const KIND = { mc: 'Multiple choice', fill: 'Fill in the blank', short: 'Short answer', num: 'Calculate' };
 const PILL = { INNER: 'inner', LEFT: 'left', ANTI: 'anti', NONE: 'none', MIXED: 'left' };
 
@@ -79,7 +79,8 @@ function home(main) {
     </div></div>
     <div class="sec"><h2>When you are short on time</h2><div class="grid">
       <a class="tile" href="#interview"><span class="num">SAY IT ALOUD</span><strong>Interview corner</strong><span class="d">The 22 interview questions from the decks, each with a one-sentence answer.</span></a>
-      <a class="tile" href="#mock"><span class="num">TEST YOURSELF</span><strong>Mock exam</strong><span class="d">Twenty questions drawn at random from all four units.</span></a>
+      <a class="tile" href="#drill"><span class="num">EXAM CONDITIONS</span><strong>Blank-editor drill</strong><span class="d">Write queries cold, five at a time. Lab questions are graded by running them against the data.</span></a>
+      <a class="tile" href="#mock"><span class="num">TEST YOURSELF</span><strong>Mock exam</strong><span class="d">Eight query-writing questions drawn at random, with a timer.</span></a>
       <a class="tile" href="#cheat"><span class="num">LOOK UP</span><strong>Function sheet</strong><span class="d">What each function and clause does, with the trap that goes with it.</span></a>
       <a class="tile" href="#play"><span class="num">RUN IT</span><strong>Playground</strong><span class="d">A real PostgreSQL in your browser, loaded with a sample of northgate. Type a query, see the rows.</span></a>
     </div></div>
@@ -130,24 +131,39 @@ function cards(pane, u) {
 /* ---------- Query walkthroughs ---------- */
 const SETS = [['single', 'Single table'], ['joins', 'Joins'], ['shaping', 'Shaping data'], ['multi', 'Multi-step']];
 const SRC = { practice: 'Practice set', lecture: 'Lecture exercise', lab: 'Lab' };
-function walkCard(w) {
+function walkCard(w, opts = {}) {
   const key = 'walk-' + w.key, el = document.createElement('article'); el.className = 'q';
-  const prev = done()[key];
+  const prev = done()[key], canRun = w.src === 'lab';
   el.innerHTML = `<div class="q-head"><span class="q-n">${w.label}</span><span class="q-t">${w.q}</span><span class="q-kind">${SRC[w.src]} · ${w.db}${prev === 1 ? ' · ✓' : ''}</span></div>
-    <textarea placeholder="Say what one row of the answer is, which tables, which join, which clause each condition lives in. Then draft the query." aria-label="Your reasoning"></textarea>
+    <textarea class="sqlin" spellcheck="false" placeholder="${canRun ? 'Write the query here, then Run & check runs it on the northgate sample and compares it with the model answer: same columns, rows, values and order. ⌘/Ctrl+Enter runs.' : 'Say what one row of the answer is, which tables, which join, which clause each condition lives in. Then write the query and compare.'}" aria-label="Your query"></textarea>
+    <div class="verdict" hidden></div>
     <div class="steps" hidden></div><div class="sqlbox" hidden></div>
-    <div class="row"><button class="btn" data-a="step">Next step</button><button class="btn alt" data-a="all">Show everything</button><span class="grade row" hidden><span class="note">Did your query match?</span><button class="btn alt" data-ok="1">Got it</button><button class="btn alt" data-ok="0">Missed it</button></span></div>`;
-  const steps = $('.steps', el), box = $('.sqlbox', el); let k = 0;
+    <div class="row">${canRun ? '<button class="btn" data-a="run">Run &amp; check</button>' : ''}${opts.drill ? '' : '<button class="btn alt" data-a="step">Next step</button>'}<button class="btn alt" data-a="all">${opts.drill ? 'Reveal answer' : 'Show everything'}</button><span class="note" data-st></span><span class="grade row" hidden><span class="note">Did your query match?</span><button class="btn alt" data-ok="1">Got it</button><button class="btn alt" data-ok="0">Missed it</button></span></div>`;
+  const steps = $('.steps', el), box = $('.sqlbox', el), verdict = $('.verdict', el), ta = $('textarea', el); let k = 0;
+  const grade = ok => { mark(key, ok); $('.grade', el).innerHTML = `<span class="note">${ok ? 'Marked as correct.' : 'Marked for review.'}</span>`; el.dispatchEvent(new CustomEvent('answered', { bubbles: true, detail: { ok } })); };
   const show = n => {
     steps.hidden = false;
     while (k < Math.min(n, w.steps.length)) { const s = w.steps[k]; const trap = /^(Trap|Watch)/.test(s); steps.insertAdjacentHTML('beforeend', `<div class="step ${trap ? 'trap' : ''}"><span class="k">${trap ? '⚠' : k + 1}</span><span>${s}</span></div>`); k++; }
-    if (k >= w.steps.length && n > w.steps.length) { box.hidden = false; box.innerHTML = SQL(w.sql) + (w.note ? `<p class="note" style="margin-top:8px">${w.note}</p>` : ''); $('[data-a=step]', el).disabled = true; $('[data-a=all]', el).disabled = true; $('.grade', el).hidden = false; }
-    else $('[data-a=step]', el).textContent = k >= w.steps.length ? 'Show the query' : 'Next step';
+    if (k >= w.steps.length && n > w.steps.length) { box.hidden = false; box.innerHTML = SQL(w.sql) + (w.note ? `<p class="note" style="margin-top:8px">${w.note}</p>` : ''); $$('[data-a=step],[data-a=all]', el).forEach(b => b.disabled = true); if (!el.dataset.checked) $('.grade', el).hidden = false; }
+    else { const b = $('[data-a=step]', el); if (b) b.textContent = k >= w.steps.length ? 'Show the query' : 'Next step'; }
   };
+  const run = async () => {
+    const sql = ta.value.trim(); if (!sql) { ta.focus(); return; }
+    const st = $('[data-st]', el), btn = $('[data-a=run]', el); btn.disabled = true;
+    try {
+      if (!PG) { await loadPG(m => st.textContent = m); st.textContent = ''; }
+      st.textContent = 'Running…';
+      const r = await checkQuery(sql, w.sql);
+      verdict.hidden = false; verdict.className = 'verdict ' + (r.ok ? 'good' : 'bad'); verdict.innerHTML = r.html; st.textContent = '';
+      el.dataset.checked = 1; $('.grade', el).hidden = true; grade(r.ok);
+    } catch (e) { st.textContent = ''; verdict.hidden = false; verdict.className = 'verdict bad'; verdict.innerHTML = `<b>Could not run:</b> ${esc(e.message)}`; }
+    btn.disabled = false;
+  };
+  ta.onkeydown = e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canRun) { e.preventDefault(); run(); } };
   el.onclick = e => {
     const b = e.target.closest('[data-a],[data-ok]'); if (!b) return;
-    if (b.dataset.a === 'step') show(k + 1); else if (b.dataset.a === 'all') show(99);
-    else { const ok = b.dataset.ok === '1'; mark(key, ok); $('.grade', el).innerHTML = `<span class="note">${ok ? 'Marked as correct.' : 'Marked for review.'}</span>`; }
+    if (b.dataset.a === 'run') run(); else if (b.dataset.a === 'step') show(k + 1); else if (b.dataset.a === 'all') show(99);
+    else grade(b.dataset.ok === '1');
   };
   return el;
 }
@@ -156,7 +172,7 @@ function walk(main, tab) {
   store.set('wset', set);
   const src = store.get('wsrc', 'all');
   main.innerHTML = `<div class="col"><header><p class="eyebrow">The logic behind every query</p><h1>Query walkthroughs</h1></header>
-    <p class="lede">${WALK.length} questions: the practice sets (reelhouse), the lecture exercises (blue_line) and the labs (northgate). Write your reasoning, then reveal it one step at a time and compare the query. Lab answers are model answers written for this site, not the instructor's key.</p>
+    <p class="lede">${WALK.length} questions: the practice sets (reelhouse), the lecture exercises (blue_line) and the labs (northgate). Write the query, then reveal the reasoning one step at a time and compare. Lab questions have Run &amp; check: your query runs on the northgate sample and is compared with the model answer, the way the lab grader does it. Lab answers are model answers written for this site, not the instructor's key.</p>
     <div class="filters"><div class="toggle" id="w-set">${SETS.map(([k, t]) => `<button aria-pressed="${k === set}" data-s="${k}">${t}</button>`).join('')}</div>
     <div class="toggle" id="w-src"><button aria-pressed="${src === 'all'}" data-r="all">All</button><button aria-pressed="${src === 'practice'}" data-r="practice">Practice set</button><button aria-pressed="${src === 'lecture'}" data-r="lecture">Lecture</button><button aria-pressed="${src === 'lab'}" data-r="lab">Lab</button></div></div>
     <div class="schema" id="w-schema"></div>
@@ -274,30 +290,44 @@ function glossary(main) {
 }
 
 /* ---------- Mock exam ---------- */
-function mock(main) {
-  const pool = UNITS.flatMap(u => u.quiz.map((q, i) => ({ q, key: `${u.id}-${i}`, u })));
-  const pick = pool.sort(() => Math.random() - 0.5).slice(0, 20);
-  let right = 0, seen = 0;
-  main.innerHTML = `<div class="col"><header><p class="eyebrow">Mixed review</p><h1>Mock exam</h1></header>
-    <p class="lede">Twenty questions drawn at random across all four units. Use New draw for a fresh set. For query-writing practice, use the walkthroughs instead.</p>
-    <div class="row"><div class="stats" style="flex:1 1 260px"><div><span>Score</span><strong id="mk-s">0 / 0</strong></div><div><span>Remaining</span><strong id="mk-r">20</strong></div></div><button class="btn alt" id="mk-n">New draw</button></div>
+function drawDrill(main, pool, n, title, lede, eyebrow) {
+  const pick = [...pool].sort(() => Math.random() - 0.5).slice(0, n);
+  let right = 0, seen = 0; const t0 = Date.now();
+  main.innerHTML = `<div class="col"><header><p class="eyebrow">${eyebrow}</p><h1>${title}</h1></header>
+    <p class="lede">${lede}</p>
+    <div class="row"><div class="stats" style="flex:1 1 300px"><div><span>Score</span><strong id="mk-s">0 / 0</strong></div><div><span>Remaining</span><strong id="mk-r">${pick.length}</strong></div><div><span>Time</span><strong id="mk-t">0:00</strong></div></div><button class="btn alt" id="mk-n">New draw</button></div>
+    <p class="note">No notes, no steps: write the query cold, as on the exam. Lab questions (northgate) are checked by running them; the others you grade against the model answer.</p>
     <div class="col" id="mq" style="gap:14px"></div><div class="verdict" id="mk-v" hidden></div></div>`;
-  pick.forEach((p, i) => { const el = question(p.q, p.key, `${i + 1}`); const t = document.createElement('span'); t.className = 'note'; t.textContent = p.u.title; el.append(t); el.dataset.u = p.u.title; $('#mq', main).append(el); });
+  pick.forEach((w, i) => { const el = walkCard(w, { drill: true }); el.dataset.u = UNITS.find(u => u.id === w.set).title; $('.q-n', el).textContent = `${i + 1} · ${w.label}`; $('#mq', main).append(el); });
   const missed = {};
+  const tick = setInterval(() => { if (!document.body.contains(main.firstChild)) return clearInterval(tick); const s = Math.floor((Date.now() - t0) / 1000); const t = $('#mk-t', main); if (t) t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 1000);
   $('#mq', main).addEventListener('answered', e => {
-    if (e.detail.ok === null || e.target.dataset.done) return; e.target.dataset.done = 1;
+    if (e.target.dataset.done) return; e.target.dataset.done = 1;
     seen++; if (e.detail.ok) right++; else missed[e.target.dataset.u] = (missed[e.target.dataset.u] || 0) + 1;
-    $('#mk-s', main).textContent = `${right} / ${seen}`; $('#mk-r', main).textContent = 20 - seen;
-    if (seen === 20) { const v = $('#mk-v', main), m = Object.entries(missed).sort((a, b) => b[1] - a[1]); v.hidden = false; v.className = 'verdict ' + (right >= 16 ? 'good' : 'warn'); v.innerHTML = `<b>${right} of 20.</b> ` + (m.length ? `Most misses: ${m.map(([u, n]) => `${u} (${n})`).join(', ')}.` : 'A clean sweep.'); }
+    $('#mk-s', main).textContent = `${right} / ${seen}`; $('#mk-r', main).textContent = pick.length - seen;
+    if (seen === pick.length) { clearInterval(tick); const v = $('#mk-v', main), m = Object.entries(missed).sort((a, b) => b[1] - a[1]); v.hidden = false; v.className = 'verdict ' + (right >= pick.length * 0.8 ? 'good' : 'warn'); v.innerHTML = `<b>${right} of ${pick.length}.</b> ` + (m.length ? `Most misses: ${m.map(([u, n]) => `${u} (${n})`).join(', ')}.` : 'A clean sweep.'); }
   });
-  $('#mk-n', main).onclick = () => mock(main);
+  $('#mk-n', main).onclick = () => drawDrill(main, pool, n, title, lede, eyebrow);
+}
+function mock(main) {
+  drawDrill(main, WALK, 8, 'Mock exam', 'Eight query-writing questions drawn at random from the practice sets, the lecture exercises and the labs. Each unit\'s multiple-choice quiz is still on its own tab for concept review.', 'Exam conditions');
+}
+function drill(main, tab) {
+  const set = SETS.find(s => s[0] === tab) ? tab : store.get('dset', 'all'); store.set('dset', set);
+  const src = store.get('dsrc', 'all');
+  const pool = WALK.filter(w => (set === 'all' || w.set === set) && (src === 'all' || w.src === src));
+  drawDrill(main, pool, 5, 'Blank-editor drill', `Five questions at a time from the ${pool.length} that match the filters. Pick a unit or a source, write each query from scratch, then check or reveal.`, 'One question at a time, nothing to lean on');
+  $('.lede', main).insertAdjacentHTML('afterend', `<div class="filters"><div class="toggle" id="d-set"><button aria-pressed="${set === 'all'}" data-s="all">All units</button>${SETS.map(([k, t]) => `<button aria-pressed="${k === set}" data-s="${k}">${t}</button>`).join('')}</div>
+    <div class="toggle" id="d-src"><button aria-pressed="${src === 'all'}" data-r="all">All</button><button aria-pressed="${src === 'lab'}" data-r="lab">Lab (checked by running)</button><button aria-pressed="${src === 'practice'}" data-r="practice">Practice set</button><button aria-pressed="${src === 'lecture'}" data-r="lecture">Lecture</button></div></div>`);
+  $('#d-set', main).onclick = e => { const b = e.target.closest('[data-s]'); if (b) { store.set('dset', b.dataset.s); location.hash = 'drill' + (b.dataset.s === 'all' ? '' : '.' + b.dataset.s); if (b.dataset.s === 'all') drill(main, 'notes'); } };
+  $('#d-src', main).onclick = e => { const b = e.target.closest('[data-r]'); if (b) { store.set('dsrc', b.dataset.r); drill(main, set); } };
 }
 
 function render() {
   const { page, tab } = route(), main = $('#main'), u = UNITS.find(x => x.id === page);
   if (u) unit(main, u, ['notes', 'lab', 'cards', 'quiz'].includes(tab) ? tab : 'notes');
   else if (page === 'walk') walk(main, tab); else if (page === 'reason') joins(main); else if (page === 'bugs') bugs(main, tab); else if (page === 'interview') interview(main, tab);
-  else if (page === 'order') order(main); else if (page === 'cheat') cheat(main); else if (page === 'glossary') glossary(main); else if (page === 'mock') mock(main); else if (page === 'play') PLAY(main);
+  else if (page === 'order') order(main); else if (page === 'drill') drill(main, tab); else if (page === 'cheat') cheat(main); else if (page === 'glossary') glossary(main); else if (page === 'mock') mock(main); else if (page === 'play') PLAY(main);
   else home(main);
   nav(); document.title = (u ? u.title : page === 'home' ? 'Overview' : EXTRA.find(e => e[0] === page)?.[1] || 'Overview') + ' · SQL Midterm Review';
   window.scrollTo(0, 0);

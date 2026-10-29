@@ -316,6 +316,24 @@ async function loadPG(status) {
   PG_READY.catch(() => { PG_READY = null; });
   return PG_READY;
 }
+/* Run the student's query and the model query; compare shape, row count, values and order the way the lab grader does. */
+const normCell = v => v === null || v === undefined ? 'NULL' : v instanceof Date ? v.toISOString().slice(0, 10) : typeof v === 'object' ? JSON.stringify(v) : String(v);
+const sameCell = (a, b) => { if (a === b) return true; const x = parseFloat(a), y = parseFloat(b); return a !== 'NULL' && b !== 'NULL' && !isNaN(x) && !isNaN(y) && /^-?[\d.]+$/.test(a) && /^-?[\d.]+$/.test(b) && Math.abs(x - y) < 0.006; };
+async function checkQuery(mine, model) {
+  const fail = html => ({ ok: false, html });
+  let r1; try { r1 = await PG.query(mine); } catch (e) { return fail(`<b>Your query failed.</b> ${esc(e.message)}`); }
+  const r2 = await PG.query(model);
+  const c1 = r1.fields.map(f => f.name), c2 = r2.fields.map(f => f.name);
+  const rows1 = r1.rows.map(r => c1.map(c => normCell(r[c]))), rows2 = r2.rows.map(r => c2.map(c => normCell(r[c])));
+  const peek = rows => rows.slice(0, 3).map(r => r.join(' | ')).join('<br>');
+  if (c1.length !== c2.length) return fail(`<b>Column count differs.</b> You returned ${c1.length} (${c1.join(', ')}); expected ${c2.length} (${c2.join(', ')}). Column names are not checked, but the number and order are.`);
+  if (rows1.length !== rows2.length) return fail(`<b>Row count differs.</b> You returned ${rows1.length.toLocaleString()} rows; expected ${rows2.length.toLocaleString()}.${rows1.length ? '<br>Yours start:<br><span class="mono">' + peek(rows1) + '</span>' : ''}<br>Expected start:<br><span class="mono">${peek(rows2)}</span>`);
+  for (let i = 0; i < rows1.length; i++) for (let j = 0; j < c1.length; j++) if (!sameCell(rows1[i][j], rows2[i][j])) {
+    const asSet = rows1.every(r => rows2.some(e => r.every((v, k) => sameCell(v, e[k]))));
+    return fail(`<b>${asSet ? 'Right rows, wrong order' : 'Row ' + (i + 1) + ' differs'}${asSet ? '' : ' in column ' + (j + 1) + ' (' + c2[j] + ')'}.</b> Yours: <span class="mono">${esc(rows1[i].join(' | '))}</span><br>Expected: <span class="mono">${esc(rows2[i].join(' | '))}</span>${asSet ? '<br>The sort is part of the answer: right rows in the wrong order earn half the points.' : ''}`);
+  }
+  return { ok: true, html: `<b>Match.</b> ${rows1.length.toLocaleString()} row${rows1.length === 1 ? '' : 's'}, ${c1.length} column${c1.length === 1 ? '' : 's'}, same values in the same order.` };
+}
 function PLAY(main) {
   main.innerHTML = `<div class="col"><header><p class="eyebrow">A real PostgreSQL, in this tab</p><h1>Playground</h1></header>
     <p class="lede">The northgate lab database, running in your browser. Orders and order lines are a 1-in-10 sample (every order_id divisible by 10), customers are the ones on those orders, and exchange rates are USD-from only. Everything else is whole. Counts are about a tenth of the lab key; the logic is identical.</p>
